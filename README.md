@@ -4,6 +4,11 @@ helm-extras
 ##Animation Example.
 
 ```Haskell
+import FRP.Helm
+import FRP.Helm.Window
+import FRP.Helm.Time
+import FRP.Helm.Extras.Animation
+
 frames :: Animation
 frames = relative [
    (1000, filled red   $ square 100)
