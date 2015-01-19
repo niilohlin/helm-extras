@@ -15,11 +15,10 @@ module FRP.Helm.Extras.Animation (
 
 import Prelude hiding (length)
 
-import FRP.Elerea.Simple
 import Control.Applicative
 import FRP.Helm.Graphics (Form,blank)
-import FRP.Helm.Time (Time, inMilliseconds)
-import Data.Maybe (fromJust)
+import FRP.Helm.Signal ((<~), (~~), foldp, Signal, constant)
+import FRP.Helm.Time (Time)
 import Data.List (find)
 import qualified Data.List as List (length)
 
@@ -35,6 +34,8 @@ type Animation = [Frame]
 data AnimationStatus
   -- | The animation continues to play through its frames.
   = Cycle
+  -- | The animation plays once then disappears.
+  | Play
   -- | The animation is paused.
   | Pause
   -- | The animation is stopped, jumping back to the first frame and initial time.
@@ -58,26 +59,28 @@ absolute = id
 relative :: [Frame] -> Animation
 relative = scanl1 (\acc x -> (fst acc + fst x, snd x))
 
+fromJust :: Maybe Form -> Form
+fromJust (Just f) = f
+fromJust Nothing = blank
+
 {-| Creates a signal that returns the current form in the animation when sampled from
     a specific animation. The second argument is a signal that returns the time to
     setup the animation forward when sampled. The third argument is a signal that returns
     the status of the animation, allowing you to control it. -}
-animate :: Animation -> SignalGen (Signal Time) -> SignalGen (Signal AnimationStatus) -> SignalGen (Signal Form)
-animate [] _ _ = return $ return blank
-animate anim dt status = do
-  dt1 <- dt
-  status1 <- status
-  progress <- transfer2 0 (timestep anim) status1 $ inMilliseconds <$> dt1
-
-  return $ fromJust <$> formAt anim <$> progress
+animate :: Animation -> Signal Time -> Signal AnimationStatus -> Signal Form
+animate [] _ _ = constant blank
+animate animation dt status =
+  fromJust . formAt animation <~ foldp2 (timestep animation) 0 status dt
+    where foldp2 fn ini s1 s2 = foldp (uncurry fn) ini ((,) <~ s1 ~~ s2)
 
 {-| Steps the animation but also cycles if the end is reached, handles any statuses and
     tries to pickup any issues and handle them silently. -}
 timestep :: Animation -> AnimationStatus -> Time -> Time -> Time
 timestep anim Cycle dt t = cycleTime anim (dt + t)
+timestep _ Play dt t = dt + t
 timestep _ Pause _ t = t
 timestep _ Stop _ _ = 0
-timestep anim (SetTime sT) _ _ = cycleTime anim $ inMilliseconds sT
+timestep anim (SetTime sT) _ _ = cycleTime anim sT
 timestep anim (SetFrame f) _ _ = gentleIndex anim f
   where
     gentleIndex [] _ = 0
@@ -105,7 +108,7 @@ cycleTime anim = cycleTime' (length anim)
 cycleTime' :: Time -> Time -> Time
 cycleTime' l t
   | t > l = cycleTime' l (t-l)
-  | t < 0 = cycleTime' l (l+t)
+  | t < 0 = cycleTime' l (t+l)
   | otherwise = t
 
 {-| Given an animation, a function is created which loops the frame indices of the animation
@@ -117,5 +120,5 @@ cycleFrames anim = cycleFrames' (List.length anim)
 cycleFrames' :: Int -> Int -> Int
 cycleFrames' l f
   | f > l = cycleFrames' l (f-l)
-  | f < 1 = cycleFrames' l (l+f)
+  | f < 1 = cycleFrames' l (f+l)
   | otherwise = f
