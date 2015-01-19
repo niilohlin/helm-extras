@@ -14,10 +14,11 @@ module FRP.Helm.Extras.Transition (
   length
 ) where
 
-import Control.Applicative
-import FRP.Elerea.Simple
+--import Control.Applicative
 import FRP.Helm.Color (Color)
+import FRP.Helm ((<~), Signal)
 import FRP.Helm.Time (Time, inSeconds)
+import FRP.Helm.Extras (foldp2)
 import Data.List (find)
 import Prelude hiding (length)
 import Data.Maybe (fromJust)
@@ -84,22 +85,18 @@ transitionAt pks timeUnsafe = transFrame currentTransition currentTime
     The provided time signal acts as the inner clock of the transition.
     The status signal can be used to control the transition, deciding whether
     the transition should cycle, go to a specific time, pause, stop or run once. -}
-transition :: Interpolate a => SignalGen (Signal Time) -> SignalGen (Signal TransitionStatus) -> InternalTransition a -> SignalGen (Signal a)
+-- transition = undefined
+transition :: Interpolate a => Signal Time -> Signal TransitionStatus -> InternalTransition a -> Signal a
 transition _ _ [] = error "empty transitions don't have any default value"
-transition dtGen statusGen trans = do
-  dt <- dtGen
-  status <- statusGen
-  time <- transfer2 0 step' status $ inSeconds <$> dt
-
-  return $ transitionAt trans <$> time
-
-  where
-      step' Cycle dt t = cycleTime trans (dt + t)
-      step' Pause _ t = t
-      step' Once dt t = if newT < length trans then newT
-                        else length trans
-                        where newT = dt + t
-      step' (Set t) _ _  = inSeconds t
+transition dt status trans =
+  transitionAt trans <~ foldp2 step' 0 status (dt)
+    where
+        step' Cycle dt t = cycleTime trans (dt + t)
+        step' Pause _ t = t
+        step' Once dt t = if newT < length trans then newT
+                          else length trans
+                          where newT = dt + t
+        step' (Set t) _ _  = inSeconds t
 
 {-| Converts a list of tuples describing a waypoint value and time into a transition.
     The first element in the list is the starting value and time of the transition.
