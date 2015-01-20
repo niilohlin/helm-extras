@@ -9,18 +9,18 @@ import FRP.Helm.Window
 import FRP.Helm.Time
 import FRP.Helm.Extras.Animation
 
-frames :: Animation
-frames = relative [
-   (1000, filled red   $ square 100)
-  ,(1000, filled green $ square 100)
-  ,(1000, filled blue  $ square 100)
+frames :: Signal Form
+frames = animate (fps 60) (constant Cycle) $ relative [
+   (filled red   $ square 100, second)
+  ,(filled green $ square 100, second)
+  ,(filled blue  $ square 100, second)
   ]
 
 render :: (Int, Int) -> Form -> Element
 render (w, h) animation = centeredCollage w h [animation]
 
 main :: IO ()
-main = run defaultConfig $ render <~ dimensions ~~ animate frames (fps 60) (constant Cycle)
+main = run defaultConfig $ render <~ dimensions ~~ frames
 ```
 ##Transition Example
 ```Haskell

@@ -17,7 +17,8 @@ import Prelude hiding (length)
 
 import Control.Applicative
 import FRP.Helm.Graphics (Form,blank)
-import FRP.Helm.Signal ((<~), (~~), foldp, Signal, constant)
+import FRP.Helm.Signal ((<~), Signal, constant)
+import FRP.Helm.Extras (foldp2)
 import FRP.Helm.Time (Time)
 import Data.List (find)
 import qualified Data.List as List (length)
@@ -25,7 +26,7 @@ import qualified Data.List as List (length)
 {-| A type describing a single frame in an animation. A frame consists of a time at
     which the frame takes place in an animation and the form which is how the frame
     actually looks when rendered. -}
-type Frame = (Time, Form)
+type Frame = (Form, Time)
 
 {-| A type describing an animation consisting of a list of frames. -}
 type Animation = [Frame]
@@ -57,7 +58,7 @@ absolute = id
     > relative [(100 * millisecond, picture1), (100 * millisecond, picture2)] == absolute [(100 * millisecond, picture1), (200 * millisecond, picture2)]
  -}
 relative :: [Frame] -> Animation
-relative = scanl1 (\acc x -> (fst acc + fst x, snd x))
+relative = scanl1 (\acc x -> (fst x, snd acc + snd x))
 
 fromJust :: Maybe Form -> Form
 fromJust (Just f) = f
@@ -67,11 +68,10 @@ fromJust Nothing = blank
     a specific animation. The second argument is a signal that returns the time to
     setup the animation forward when sampled. The third argument is a signal that returns
     the status of the animation, allowing you to control it. -}
-animate :: Animation -> Signal Time -> Signal AnimationStatus -> Signal Form
-animate [] _ _ = constant blank
-animate animation dt status =
+animate :: Signal Time -> Signal AnimationStatus -> Animation -> Signal Form
+animate _ _ [] = constant blank
+animate dt status animation =
   fromJust . formAt animation <~ foldp2 (timestep animation) 0 status dt
-    where foldp2 fn ini s1 s2 = foldp (uncurry fn) ini ((,) <~ s1 ~~ s2)
 
 {-| Steps the animation but also cycles if the end is reached, handles any statuses and
     tries to pickup any issues and handle them silently. -}
@@ -84,11 +84,11 @@ timestep anim (SetTime sT) _ _ = cycleTime anim sT
 timestep anim (SetFrame f) _ _ = gentleIndex anim f
   where
     gentleIndex [] _ = 0
-    gentleIndex xs n = fst $ xs !! (cycleFrames anim n -1)
+    gentleIndex xs n = snd $ xs !! (cycleFrames anim n -1)
 
 {-| The form that will be rendered for a specific time in an animation. -}
 formAt :: Animation -> Time -> Maybe Form
-formAt anim t = snd <$> find (\frame -> t <= fst frame) anim
+formAt anim t = fst <$> find (\frame -> t <= snd frame) anim
 
 {-| The amount of time one cycle of the animation takes. -}
 length :: Animation -> Time
@@ -97,14 +97,14 @@ length anim = maximum $ times anim
 
 {-| A list of all the time values of each frame in the animation. -}
 times :: Animation -> [Time]
-times = map fst
+times = map snd
 
 {-| Given an animation, a function is created which loops the time of the animation
     to always be in the animations length boundary. -}
 cycleTime :: Animation -> Time -> Time
 cycleTime anim = cycleTime' (length anim)
 
-{-| Helper function which makes a timer loop through an time interval. -}
+{-| Helper function which makes a timer loop through a time interval. -}
 cycleTime' :: Time -> Time -> Time
 cycleTime' l t
   | t > l = cycleTime' l (t-l)
